@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 
 use surrealdb::sql::{
-    Cast, Constant, Expression, Field, Fields, Ident, Idiom, Literal, Operator, Param, Part, Value,
+    Cast, Constant, Dir, Expression, Field, Fields, Ident, Idiom, Literal, Operator, Param, Part,
+    Value,
 };
 
 use crate::{kind, Kind};
@@ -312,17 +313,51 @@ pub fn get_field_from_paths(
     state: &mut QueryState,
 ) -> Result<Kind, anyhow::Error> {
     match parts.first() {
+        Some(Part::Graph(graph)) => {
+            let target_table = graph.what.0[0].to_string();
+            let target_fields = state.table_select_fields(&target_table)?;
+
+            match graph.dir {
+                Dir::Out => {
+                    if parts.len() > 1 {
+                        match &parts[1] {
+                            // If next part is another Graph, recurse with target_fields
+                            Part::Graph(_) => {
+                                let next_type =
+                                    get_field_from_paths(&parts[1..], &target_fields, state)?;
+                                Ok(next_type) // Don't wrap in array here - do it at end of chain
+                            }
+                            // If next part is All (.*), get all fields from target
+                            Part::All => {
+                                let final_fields = state.table_select_fields(&target_table)?;
+                                Ok(kind!(Arr kind!(Obj final_fields)))
+                            }
+                            _ => {
+                                let next_type =
+                                    get_field_from_paths(&parts[1..], &target_fields, state)?;
+                                Ok(kind!(Arr next_type))
+                            }
+                        }
+                    } else {
+                        // At end of chain - get all fields from final target
+                        let final_fields = state.table_select_fields(&target_table)?;
+                        Ok(kind!(Arr kind!(Obj final_fields)))
+                    }
+                }
+                Dir::In => anyhow::bail!("Incoming graph traversal not yet supported"),
+                Dir::Both => anyhow::bail!("Bidirectional graph traversal not yet supported"),
+                _ => anyhow::bail!("Unsupported graph direction!"),
+            }
+        }
         Some(Part::Field(field_name)) => match field_types.get(field_name.as_str()) {
-            Some(return_type) => match_return_type(return_type, &parts, field_types, state),
+            Some(return_type) => match_return_type(return_type, &parts[1..], field_types, state),
             None => anyhow::bail!("Field not found: {}", field_name),
         },
         Some(Part::Start(Value::Param(Param {
             0: Ident { 0: param_name, .. },
             ..
         }))) => match state.get(param_name) {
-            Some(return_type) => {
-                match_return_type(&return_type.clone(), &parts, field_types, state)
-            }
+            Some(return_type) => match_return_type(&return_type, &parts[1..], field_types, state),
             None => anyhow::bail!("Unknown parameter: {}", param_name),
         },
         Some(Part::Start(Value::Subquery(subquery))) => {
@@ -331,8 +366,6 @@ pub fn get_field_from_paths(
         }
         Some(Part::All) => Ok(kind!(Obj field_types.clone())),
         Some(_) => anyhow::bail!("Unsupported path: {}", Idiom::from(parts)),
-        // Some(_) => anyhow::bail!("Unsupported path: {:#?}", parts),
-        // We're returning an actual object
         None => Ok(kind!(Obj field_types.clone())),
     }
 }

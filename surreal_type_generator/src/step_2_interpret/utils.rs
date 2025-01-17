@@ -21,6 +21,14 @@ pub fn get_value_table(
             _ => anyhow::bail!("Expected record type for param: {}", param_ident),
         },
         Value::Thing(Thing { tb, .. }) => Ok(tb.clone()),
+        Value::Idiom(idiom) => {
+            // For graph traversal paths, get the last Graph part's target table
+            if let Some(Part::Graph(graph)) = idiom.0.last() {
+                Ok(graph.what.0[0].to_string())
+            } else {
+                anyhow::bail!("Expected graph traversal to end with a target table")
+            }
+        }
         _ => anyhow::bail!("Expected record type, got: {}", what_value),
     }
 }
