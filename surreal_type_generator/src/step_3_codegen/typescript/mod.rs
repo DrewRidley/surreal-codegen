@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{kind, step_1_parse_sql::ViewParsed, utils::printing::indent, Kind, PrettyString};
 use surrealdb::sql::{Literal, Table};
 
@@ -274,12 +276,24 @@ fn generate_type_definition(
             output.push_str("\n}");
             Ok(output)
         }
-        Kind::Literal(Literal::Array(..)) => {
-            anyhow::bail!("Literal::Array not yet supported")
-            // let string = generate_type_definition(&**array, schema)?;
-            // Ok(format!("Array<{}>", string))
-        }
+        Kind::Literal(Literal::Array(array)) => {
+            let mut array_types = HashSet::new();
+            for value in array {
+                array_types.insert(generate_type_definition(value, schema)?);
+            }
 
+            match array_types.len() {
+                0 => Ok("Array<never>".to_string()),
+                1 => Ok(format!(
+                    "Array<{}>",
+                    array_types.into_iter().next().unwrap()
+                )),
+                _ => {
+                    let types = array_types.into_iter().collect::<Vec<_>>().join(" | ");
+                    Ok(format!("Array<{}>", types))
+                }
+            }
+        }
         // Catch all
         kind => anyhow::bail!("Kind {:?} not yet supported", kind),
     }
