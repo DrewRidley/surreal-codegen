@@ -11,6 +11,15 @@ pub fn get_value_table(
 ) -> Result<String, anyhow::Error> {
     match what_value {
         Value::Table(table) => Ok(table.0.clone()),
+        Value::Array(array) => {
+            // For arrays, just take the table type from the first element
+            // since all elements must be from the same table
+            if let Some(first) = array.0.first() {
+                get_value_table(first, state)
+            } else {
+                anyhow::bail!("Empty array in relation")
+            }
+        }
         Value::Param(Param {
             0: Ident { 0: param_ident, .. },
             ..

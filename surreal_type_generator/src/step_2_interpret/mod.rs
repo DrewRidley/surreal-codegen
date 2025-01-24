@@ -93,8 +93,10 @@ fn get_statement_return_type(
         Statement::Update(update) => get_update_statement_return_type(update, state)?,
         Statement::Output(output) => get_return_statement_return_type(output, state)?,
         Statement::Upsert(upsert) => get_upsert_statement_return_type(upsert, state)?,
+        Statement::Relate(relate) => get_relate_statement_return_type(relate, state)?,
         Statement::Value(value) => get_value_return_type(value, &BTreeMap::new(), state)?,
         Statement::Set(set) => interpret_let_statement(set, state)?,
+
         _ => anyhow::bail!("Unsupported statement type: `{}`", stmt),
     }))
 }
