@@ -25,9 +25,20 @@ pub fn get_value_table(
             ..
         }) => match state.get(param_ident.as_str()) {
             Some(Kind::Record(tables)) => Ok(tables[0].0.clone()),
-            // We can technically query on a option<record<thing>> so we can allow that
-            Some(Kind::Option(box Kind::Record(tables))) => Ok(tables[0].0.clone()),
-            _ => anyhow::bail!("Expected record type for param: {}", param_ident),
+            // Add this case to handle raw record IDs stored in variables
+            Some(kind) => Ok(match kind {
+                Kind::Record(tables) => tables[0].0.clone(),
+                Kind::Option(box Kind::Record(tables)) => tables[0].0.clone(),
+                Kind::Literal(Literal::Object(fields)) => {
+                    if let Some(Kind::Record(tables)) = fields.get("id") {
+                        tables[0].0.clone()
+                    } else {
+                        anyhow::bail!("Expected record type for param: {}", param_ident)
+                    }
+                }
+                _ => anyhow::bail!("Expected record type for param: {}", param_ident),
+            }),
+            None => anyhow::bail!("Unknown parameter: {}", param_ident),
         },
         Value::Thing(Thing { tb, .. }) => Ok(tb.clone()),
         Value::Idiom(idiom) => {

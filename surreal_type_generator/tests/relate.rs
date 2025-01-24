@@ -110,6 +110,38 @@ fn relate_with_set() -> anyhow::Result<()> {
 }
 
 #[test]
+fn relate_with_variable_ids() -> anyhow::Result<()> {
+    let query = r#"
+        <record<workspace>> $space;
+        <record<organization>> $userOrg;
+        RELATE $space->workspaceOrg->$userOrg;
+    "#;
+
+    let schema = r#"
+        DEFINE TABLE workspace SCHEMAFULL;
+        DEFINE TABLE organization SCHEMAFULL;
+        DEFINE TABLE workspaceOrg SCHEMAFULL
+            TYPE RELATION;
+    "#;
+
+    let QueryResult {
+        return_types,
+        variables,
+        ..
+    } = surreal_type_generator::step_3_codegen::query_to_return_type(query, schema)?;
+
+    let expected = vec![kind!([kind!({
+        id: kind!(Record["workspaceOrg"]),
+        in: kind!(Record["workspace"]),
+        out: kind!(Record["organization"])
+    })])];
+
+    assert_eq_sorted!(return_types, expected);
+
+    Ok(())
+}
+
+#[test]
 fn relate_multiple_sources() -> anyhow::Result<()> {
     let query = r#"
         RELATE [user:john, user:jane]->works_at->company:acme;
